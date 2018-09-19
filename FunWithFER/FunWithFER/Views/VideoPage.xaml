@@ -1,0 +1,100 @@
+﻿<Page
+    x:Class="FunWithFER.Views.VideoPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:FunWithFER.Views"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:viewModels="using:FunWithFER.ViewModels"
+    xmlns:converters="using:FunWithFER.Converters"
+    xmlns:primitives="using:Telerik.UI.Xaml.Controls.Primitives"
+    mc:Ignorable="d"
+    Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+
+    <Page.DataContext>
+        <viewModels:VideoPageViewModel x:Name="PageViewModel" />
+    </Page.DataContext>
+
+    <Page.Resources>
+        <converters:ObjectToFloatConverter x:Key="ObjToFloatConverter" />
+        <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter" />
+    </Page.Resources>
+
+    <Grid Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Grid x:Name="HeaderGrid"
+              Background="{ThemeResource AppBarBackgroundThemeBrush}">
+            <TextBlock Text="WinML Video Effect - TinyYOLO"
+                       HorizontalAlignment="Center"
+                       Style="{StaticResource TitleTextBlockStyle}"
+                       Foreground="{ThemeResource AppBarItemForegroundThemeBrush}"
+                       Margin="10" />
+        </Grid>
+
+        <Grid x:Name="PreviewAreaGrid"
+              Grid.Row="1">
+
+            <CaptureElement x:Name="PreviewMediaElement" />
+
+            <ListView x:Name="EffectsListView"
+                      ItemsSource="{Binding VideoEffects}"
+                      SelectedItem="{Binding SelectedEffect, Mode=TwoWay}"
+                      SelectionChanged="EffectsListView_OnSelectionChanged"
+                      HorizontalAlignment="Left">
+                <ListView.ItemTemplate>
+                    <DataTemplate>
+                        <Grid Background="#AAFFFFFF"
+                              Margin="0,10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition />
+                            </Grid.ColumnDefinitions>
+
+                            <Image Source="{Binding IconImagePath}"
+                                   Stretch="UniformToFill"
+                                   Width="90" />
+
+                            <TextBlock Text="{Binding DisplayName}"
+                                       Style="{ThemeResource TitleTextBlockStyle}"
+                                       VerticalAlignment="Center"
+                                       Margin="10,0"
+                                       Grid.Column="1" />
+                        </Grid>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+                <ListView.ItemContainerStyle>
+                    <Style TargetType="ListViewItem">
+                        <Setter Property="HorizontalAlignment"
+                                Value="Stretch" />
+                        <Setter Property="HorizontalContentAlignment"
+                                Value="Stretch" />
+                    </Style>
+                </ListView.ItemContainerStyle>
+            </ListView>
+        </Grid>
+
+
+
+        <CommandBar Grid.Row="2">
+            <AppBarButton x:Name="ReloadVideoStreamButton"
+                          Label="Reload Video Stream"
+                          Icon="Refresh"
+                          Background="Red"
+                          Foreground="White"
+                          Click="ReloadVideoStreamButton_OnClick"
+                          Visibility="Collapsed" />
+        </CommandBar>
+
+        <primitives:RadBusyIndicator IsActive="{Binding IsBusy}"
+                                     Content="{Binding IsBusyMessage}"
+                                     AnimationStyle="AnimationStyle7"
+                                     Background="#CCFFFFFF"
+                                     Grid.Row="0"
+                                     Grid.RowSpan="3" />
+    </Grid>
+</Page>

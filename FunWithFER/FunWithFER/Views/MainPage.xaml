@@ -1,0 +1,73 @@
+﻿<Page x:Class="FunWithFER.Views.MainPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:local="using:FunWithFER"
+      xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+      xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+      mc:Ignorable="d"
+      Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+
+    <Grid Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" 
+                    HorizontalAlignment="Center"
+                    Margin="10">
+            <TextBlock x:Name="StatusBlock"
+                       FontWeight="Bold"
+                       TextWrapping="Wrap"
+                       Text="Press on the button to select and image and run it through TinyYOLO!"
+                       HorizontalAlignment="Center" />
+            <TextBlock x:Name="Duration"
+                       Text="0 fps"
+                       HorizontalAlignment="Center"
+                       FontSize="14" />
+        </StackPanel>
+
+        <Grid Grid.Row="1">
+            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                <CaptureElement x:Name="WebCamCaptureElement"
+                                Stretch="Fill"
+                                VerticalAlignment="Center"
+                                HorizontalAlignment="Left"
+                                Width="320"
+                                Height="240" />
+                <Canvas Name="OverlayCanvas"
+                        VerticalAlignment="Center"
+                        HorizontalAlignment="Left"
+                        Width="416"
+                        Height="416" />
+            </StackPanel>
+        </Grid>
+
+        <CommandBar HorizontalContentAlignment="Center" 
+                    VerticalAlignment="Center" 
+                    Grid.Row="2">
+            <CommandBar.Content>
+                <ToggleSwitch x:Name="DeviceToggle"
+                              HorizontalAlignment="Right"
+                              OffContent="CPU"
+                              OnContent="GPU" 
+                              IsOn="True"
+                              Toggled="OnDeviceToggleToggled" 
+                              Margin="10,5,0,5"/>
+            </CommandBar.Content>
+
+            <AppBarButton Name="EvaluateImageButton"
+                          Label="image eval"
+                          Icon="Upload"
+                          ToolTipService.ToolTip="Pick and evaluate and image"
+                          Click="EvaluateImageButton_Clicked" />
+
+            <AppBarButton Name="EvaluateVideoButton"
+                          Label="video eval"
+                          Icon="Video"
+                          ToolTipService.ToolTip="Turn on/off webcam"
+                          Click="EvaluateVideoButton_Clicked" />
+        </CommandBar>
+    </Grid>
+</Page>
