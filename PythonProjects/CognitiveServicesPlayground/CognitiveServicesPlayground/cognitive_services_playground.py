@@ -6,21 +6,133 @@ import requests
 from PIL import Image
 import vision_service
 
-def test_image_analysis():
+
+def generate_bounding_box_polygon(comma_delimited_rect: str):
+    """ Custom helper method I wrote to create a bounding box for matplot using Azure data """
+    box_coordinates = comma_delimited_rect.strip().split(',')
+    x = int(box_coordinates[0].strip())
+    y = int(box_coordinates[1].strip())
+    width = int(box_coordinates[2].strip())
+    height = int(box_coordinates[3].strip())
+    bottom_left = [x, y]
+    bottom_right = [x + width, y]
+    top_left = [x, y + height]
+    top_right = [x + width, y + height]
+    points = [bottom_left, top_left, top_right, bottom_right, bottom_left]
+    polygon = plt.Polygon(points, fill=None, edgecolor='xkcd:rusty red', closed=False)
+    return polygon
+
+
+def test_text_recognition_with_bytes(image_url: str):
+    """ Test Text Recognition service using an image as a byte array """
+
+    # This loads up the bytes from the online image as an example of a file-loaded image
+    image_bytes_data = requests.get(image_url).content
+    image_bytes = BytesIO(image_bytes_data)
+
+    # ----- PART 1 ------
+    # Make the request to Azure Cognitive Services using the image byte array
+    result = vision_service.recognize_text_from_image_bytes(image_bytes)
+
+    # If you want to see the result in the console, use this approach
+    # print(json.dumps(result, indent=1))
+
+    # ----- PART 2 ------
+    # Draw the discovered boxes and the text results
+    # Step 1 - Set the image as the background of the plot area
+    image = Image.open(image_bytes)
+    plt.imshow(image)
+
+    # Step 2 - Iterate over all the regions, lines and words to draw their bounding boxes
+
+    # Draw a box for every region
+    for region in result["regions"]:
+        region_box = generate_bounding_box_polygon(region["boundingBox"])
+        plt.gca().add_line(region_box)
+
+        # Draw a box around every line in a region
+        for line in region["lines"]:
+            line_box = generate_bounding_box_polygon(line["boundingBox"])
+            plt.gca().add_line(line_box)
+
+            detected_text = ""
+
+            # Draw a box around every word in the line
+            for word in line["words"]:
+                detected_text += word
+                word_box = generate_bounding_box_polygon(word["boundingBox"])
+                plt.gca().add_line(word_box)
+
+            # output each line's detected text
+            print(detected_text)
+
+    # Step 3 - Turn off the graph axes and show the graph!
+    plt.axis("off")
+    plt.show()
+
+
+def test_text_recognition_with_url(image_url: str):
+    """ Test Text Recognition service using an image as a URL string """
+
+    # ----- PART 1 ------
+    # Make the request to Azure Cognitive Services using the image byte array
+    result = vision_service.recognize_text_with_image_url(image_url)
+
+    # If you want to see the result in the console, use this approach
+    # print(json.dumps(result, indent=1))
+
+    # ----- PART 2 ------
+    # Draw the discovered boxes and the text results
+
+    # Step 1 - Set the image as the background of the plot area
+    image_bytes_data = requests.get(image_url).content
+    image_bytes = BytesIO(image_bytes_data)
+    image = Image.open(image_bytes)
+    plt.imshow(image)
+
+    # Step 2 - Iterate over all the regions, lines and words to draw their bounding boxes
+    # Draw a box for every region
+    for region in result["regions"]:
+        region_box = generate_bounding_box_polygon(region["boundingBox"])
+        plt.gca().add_line(region_box)
+
+        # Draw a box around every line in a region
+        for line in region["lines"]:
+            line_box = generate_bounding_box_polygon(line["boundingBox"])
+            plt.gca().add_line(line_box)
+
+            detected_text = ""
+
+            # Draw a box around every word in the line
+            for word in line["words"]:
+                word_box = generate_bounding_box_polygon(word["boundingBox"])
+                plt.gca().add_line(word_box)
+
+            # output each line's detected text
+            print(detected_text)
+
+    # Step 3 - Turn off the graph axes and show the graph!
+    plt.axis("off")
+    plt.show()
+
+
+def test_image_analysis(image_url: str):
     """ Test Image analysis service """
-    image_url = "https://dvlup.com/wp-content/uploads/2018/03/cropped-blurredfeatureimage.jpg"
 
-    # Use helper py file to make request to Azure
-    analysis_result = vision_service.analyze_image(image_url)
+    # ----- PART 1 ------
+    # Call the image analysis API
+    result = vision_service.analyze_image(image_url)
 
-    # get the captions from the json dict object
-    image_caption = analysis_result["description"]["captions"][0]["text"].capitalize()
+    # ----- PART 2 ------
+    # Get the captions from the json dict object
+    image_caption = result["description"]["captions"][0]["text"].capitalize()
 
-    # shows the stringified json in the console
-    print(json.dumps(analysis_result, indent=1))
+    # If you want to see the result in the console, use this approach
+    # print(json.dumps(result, indent=1))
 
-    # Part 2 (not required, uses matplotlib to show a UI for the result)
-    image_data = requests.get(source_image_url).content
+    # ----- PART 3 ------
+    # Not required, uses matplotlib to show the image and result in title
+    image_data = requests.get(image_url).content
     image = Image.open(BytesIO(image_data))
 
     plt.imshow(image)
@@ -29,95 +141,26 @@ def test_image_analysis():
     plt.title(image_caption, size="x-large", y=-0.1)
     plt.show()
 
-def test_text_recognition_with_bytes():
-    """ Test Text Recognition service using an image as a byte array """
-    text_image_url = "https://content.screencast.com/users/LanceMcCarthy/folders/Jing/media/7262d166-a290-4e51-af36-7d45ffd4e7e0/2018-07-16_2020.png"
 
-    image_bytes_data = requests.get(text_image_url).content
-    image_bytes = BytesIO(image_bytes_data)
+# Main application Logic
 
-    # PART 1 - Cognitive Services
-    # Make the request to Azure using the image byte array
-    result = vision_service.recognize_text_from_image_bytes(image_bytes)
-
-    # This is the structure of the result dict
-    # result["language"]
-    # result["orientation"]
-    # result["textAngle"]
-    # result["regions"][0]["boundingBox"]
-    # result["regions"][0]["lines"][0]["boundingBox"]
-    # result["regions"][0]["lines"][0]["words"][0]["boundingBox"]
-    # result["regions"][0]["lines"][0]["words"][0]["text"]
-
-    print("Language Detected: " + result["language"])
-
-    # PART 2 - Draw the discovered boxes and the text results
-
-    # PART 2.1 - Set the image as the background of the plot area
-    image = Image.open(image_bytes)
-    plt.imshow(image)
-
-    # PART 2.2 - Iterate over all the regions, lines and words to draw their bounding boxes
-
-    # Draw a box for every region
-    for region in result["regions"]:
-        region_box_coordinates = region["boundingBox"].strip().split(',')
-        x = int(region_box_coordinates[0].strip())
-        y = int(region_box_coordinates[1].strip())
-        width = int(region_box_coordinates[2].strip())
-        height = int(region_box_coordinates[3].strip())
-        region_points = [[x, y], [x, y + height], [x + width, y + height], [x + width, y], [x, y]]
-        region_line = plt.Polygon(region_points, closed=None, fill=None, edgecolor='r')
-        plt.gca().add_line(region_line)
-
-        # Draw a box around every line in a region
-        for line in region["lines"]:
-            line_box_coordinates = line["boundingBox"].strip().split(',')
-            x2 = int(line_box_coordinates[0].strip())
-            y2 = int(line_box_coordinates[1].strip())
-            width2 = int(line_box_coordinates[2].strip())
-            height2 = int(line_box_coordinates[3].strip())
-            line_points = [[x2, y2], [x2, y2 + height2], [x2 + width2, y2 + height2], [x2 + width2, y2], [x2, y2]]
-            text_line_line = plt.Polygon(line_points, closed=None, fill=None, edgecolor='r')
-            plt.gca().add_line(text_line_line)
-
-            # Draw a box around every word in the line
-            for word in line["words"]:
-                word_box_coordinates = word["boundingBox"].strip().split(',')
-                x3 = int(word_box_coordinates[0].strip())
-                y3 = int(word_box_coordinates[1].strip())
-                width3 = int(word_box_coordinates[2].strip())
-                height3 = int(word_box_coordinates[3].strip())
-                word_points = [[x3, y3], [x3, y3 + height3], [x3 + width3, y3 + height3], [x3 + width3, y3], [x3, y3]]
-                line3 = plt.Polygon(word_points, closed=None, fill=None, edgecolor='r')
-                plt.gca().add_line(line3)
-    
-    # STEP 2.3 - Turn off the graph axes and show the graph!
-    plt.axis("off")
-    plt.show()
-
-
-def test_text_recognition_with_url():
-    """ Test Text Recognition service using an image as a URL string """
-    text_image_url = "https://content.screencast.com/users/LanceMcCarthy/folders/Jing/media/7262d166-a290-4e51-af36-7d45ffd4e7e0/2018-07-16_2020.png"
-
-    # Use helper py file to make request to Azure
-    text_recog_result = vision_service.recognize_text_with_image_url(text_image_url)
-
-
-
-    print(json.dumps(text_recog_result, indent=1))
+COMPUTER_ON_TABLE_IMAGE_URL = "https://dvlup.com/wp-content/uploads/2018/03/cropped-blurredfeatureimage.jpg"
+CODE_SCREENSHOT_URL = "https://content.screencast.com/users/LanceMcCarthy/folders/Jing/media/7262d166-a290-4e51-af36-7d45ffd4e7e0/2018-07-16_2020.png"
 
 print("Test Options:")
 print("1 - Image Analysis")
-print("2 - Text Recognition, with bounding boxes, using image bytes")
-print("3 - Text Recognition using image URL")
+print("2 - Text Recognition using test image bytes (Bounding Boxes)")
+print("3 - Text Recognition using test image URL (Bounding Boxes)")
+print("4 - Text Recognition using a pasted URL (Bounding Boxes)")
 
-CHOSEN_TEST = input("Enter 1, 2 or 3...")
+CHOSEN_TEST = input("Enter 1, 2, 3 or 4...")
 
 if CHOSEN_TEST == "1":
-    test_image_analysis()
+    test_image_analysis(image_url=COMPUTER_ON_TABLE_IMAGE_URL)
 elif CHOSEN_TEST == "2":
-    test_text_recognition_with_bytes()
+    test_text_recognition_with_bytes(image_url=CODE_SCREENSHOT_URL)
 elif CHOSEN_TEST == "3":
-    test_text_recognition_with_url()
+    test_text_recognition_with_url(image_url=CODE_SCREENSHOT_URL)
+elif CHOSEN_TEST == "4":
+    TEST_URL = input("Paste in URL to the image, then hit enter...")
+    test_text_recognition_with_url(image_url=TEST_URL)

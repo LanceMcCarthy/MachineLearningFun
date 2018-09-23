@@ -2,7 +2,7 @@
 import requests
 import service_constants
 
-def analyze_image(image_url):
+def analyze_image(image_url: str):
     """ Analyse an image for visual features """
 
     # Analyze method
@@ -31,7 +31,7 @@ def analyze_image(image_url):
     return analysis
 
 
-def recognize_text_with_image_url(image_url):
+def recognize_text_with_image_url(image_url: str):
     """ Recognize text using image bytes for data. Returns TextAnalysisResult object. """
 
     analyze_endpoint_url = service_constants.VISION_SERVICE_URL + "recognizeText"
@@ -58,10 +58,19 @@ def recognize_text_with_image_url(image_url):
     # json object from the body
     analysis = response.json()
 
+    # This is the structure of the result dict
+    # result["language"]
+    # result["orientation"]
+    # result["textAngle"]
+    # result["regions"][0]["boundingBox"]
+    # result["regions"][0]["lines"][0]["boundingBox"]
+    # result["regions"][0]["lines"][0]["words"][0]["boundingBox"]
+    # result["regions"][0]["lines"][0]["words"][0]["text"]
+
     return analysis
 
 
-def recognize_text_from_image_bytes(image_bytes):
+def recognize_text_from_image_bytes(image_bytes: str):
     """ Recognize text using image url for data. Returns TextAnalysisResult object. """
     analyze_endpoint_url = service_constants.VISION_SERVICE_URL + "recognizeText"
 
@@ -75,9 +84,6 @@ def recognize_text_from_image_bytes(image_bytes):
     # if the text is handwritten, toggle this flag
     params = {'handwriting': 'false'}
 
-    # the image byte data
-    #image_ata = image_bytes
-
     # make the POST request
     response = requests.post(analyze_endpoint_url, headers=headers, params=params, data=image_bytes)
 
@@ -86,5 +92,14 @@ def recognize_text_from_image_bytes(image_bytes):
 
     # json object from the body
     analysis = response.json()
+
+    # This is the structure of the result dict
+    # result["language"]
+    # result["orientation"]
+    # result["textAngle"]
+    # result["regions"][0]["boundingBox"]
+    # result["regions"][0]["lines"][0]["boundingBox"]
+    # result["regions"][0]["lines"][0]["words"][0]["boundingBox"]
+    # result["regions"][0]["lines"][0]["words"][0]["text"]
 
     return analysis
