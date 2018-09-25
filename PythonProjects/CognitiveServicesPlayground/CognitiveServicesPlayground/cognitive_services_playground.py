@@ -4,6 +4,7 @@ from io import BytesIO
 import matplotlib.pyplot as plt
 import requests
 from PIL import Image
+import easygui
 import vision_service
 
 
@@ -55,16 +56,15 @@ def test_text_recognition_with_bytes(image_url: str):
             line_box = generate_bounding_box_polygon(line["boundingBox"])
             plt.gca().add_line(line_box)
 
-            detected_text = ""
-
             # Draw a box around every word in the line
             for word in line["words"]:
                 detected_text += word
                 word_box = generate_bounding_box_polygon(word["boundingBox"])
                 plt.gca().add_line(word_box)
-
-            # output each line's detected text
-            print(detected_text)
+                box_coordinates = word["boundingBox"].strip().split(',')
+                x = int(box_coordinates[0].strip())
+                y = int(box_coordinates[1].strip())
+                plt.gca().text(x, y-10, word["text"], fontsize=8, color='xkcd:rusty red')
 
     # Step 3 - Turn off the graph axes and show the graph!
     plt.axis("off")
@@ -101,15 +101,14 @@ def test_text_recognition_with_url(image_url: str):
             line_box = generate_bounding_box_polygon(line["boundingBox"])
             plt.gca().add_line(line_box)
 
-            detected_text = ""
-
             # Draw a box around every word in the line
             for word in line["words"]:
                 word_box = generate_bounding_box_polygon(word["boundingBox"])
                 plt.gca().add_line(word_box)
-
-            # output each line's detected text
-            print(detected_text)
+                box_coordinates = word["boundingBox"].strip().split(',')
+                x = int(box_coordinates[0].strip())
+                y = int(box_coordinates[1].strip())
+                plt.gca().text(x, y-10, word["text"], fontsize=8, color='xkcd:rusty red')
 
     # Step 3 - Turn off the graph axes and show the graph!
     plt.axis("off")
@@ -142,6 +141,53 @@ def test_image_analysis(image_url: str):
     plt.show()
 
 
+def test_text_recognition_with_local_file():
+    """ Test Image analysis service using locally picked image file"""
+
+    print("loading file picker, please wait...")
+    file_name = easygui.fileopenbox()
+
+    result = None
+    image_bytes = None
+
+    print("opening file...")
+    with open(file_name, "rb") as binary_file:
+        print("reading file contents...")
+        image_bytes = open(file_name, "rb").read()
+        binary_file.close()
+
+    print("uploading file to Azure...")
+    result = vision_service.recognize_text_from_image_bytes(image_bytes)
+
+    print("setting image to plot background...")
+    image = Image.open(BytesIO(image_bytes))
+    plt.imshow(image)
+
+    print("drawing bounding boxes...")
+    for region in result["regions"]:
+        region_box = generate_bounding_box_polygon(region["boundingBox"])
+        plt.gca().add_line(region_box)
+
+        # Draw a box around every line in a region
+        for line in region["lines"]:
+            line_box = generate_bounding_box_polygon(line["boundingBox"])
+            plt.gca().add_line(line_box)
+
+            # Draw a box around every word in the line
+            for word in line["words"]:
+                word_box = generate_bounding_box_polygon(word["boundingBox"])
+                plt.gca().add_line(word_box)
+                box_coordinates = word["boundingBox"].strip().split(',')
+                x = int(box_coordinates[0].strip())
+                y = int(box_coordinates[1].strip())
+                plt.gca().text(x, y-10, word["text"], fontsize=8, color='xkcd:rusty red')
+
+    # Step 3 - Turn off the graph axes and show the graph!
+    plt.axis("off")
+
+    print("Complete! Showing result...")
+    plt.show()
+
 # Main application Logic
 
 COMPUTER_ON_TABLE_IMAGE_URL = "https://dvlup.com/wp-content/uploads/2018/03/cropped-blurredfeatureimage.jpg"
@@ -151,9 +197,10 @@ print("Test Options:")
 print("1 - Image Analysis")
 print("2 - Text Recognition using test image bytes (Bounding Boxes)")
 print("3 - Text Recognition using test image URL (Bounding Boxes)")
-print("4 - Text Recognition using a pasted URL (Bounding Boxes)")
+print("4 - Text Recognition using an image URL (Bounding Boxes)")
+print("5 - Text Recognition using a loaded file  (Bounding Boxes)")
 
-CHOSEN_TEST = input("Enter 1, 2, 3 or 4...")
+CHOSEN_TEST = input("Enter 1, 2, 3, 4 or 5...")
 
 if CHOSEN_TEST == "1":
     test_image_analysis(image_url=COMPUTER_ON_TABLE_IMAGE_URL)
@@ -164,3 +211,5 @@ elif CHOSEN_TEST == "3":
 elif CHOSEN_TEST == "4":
     TEST_URL = input("Paste in URL to the image, then hit enter...")
     test_text_recognition_with_url(image_url=TEST_URL)
+elif CHOSEN_TEST == "5":
+    test_text_recognition_with_local_file()
