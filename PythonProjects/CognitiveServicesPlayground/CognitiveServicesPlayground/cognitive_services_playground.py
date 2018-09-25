@@ -8,8 +8,8 @@ import easygui
 import vision_service
 
 
-def generate_bounding_box_polygon(comma_delimited_rect: str):
-    """ Custom helper method I wrote to create a bounding box for matplot using Azure data """
+def render_bounding_box(comma_delimited_rect: str, plot: plt):
+    """ Helper method to render bounding box around the detected word """
     box_coordinates = comma_delimited_rect.strip().split(',')
     x = int(box_coordinates[0].strip())
     y = int(box_coordinates[1].strip())
@@ -21,8 +21,14 @@ def generate_bounding_box_polygon(comma_delimited_rect: str):
     top_right = [x + width, y + height]
     points = [bottom_left, top_left, top_right, bottom_right, bottom_left]
     polygon = plt.Polygon(points, fill=None, edgecolor='xkcd:rusty red', closed=False)
-    return polygon
+    plot.gca().add_line(polygon)
 
+def render_word(comma_delimited_rect: str, word: str, plot: plt):
+    """ Helper method to render the word above the bounding box """
+    coordinates_array = comma_delimited_rect.strip().split(',')
+    x = int(coordinates_array[0].strip())
+    y = int(coordinates_array[1].strip())
+    plot.gca().text(x, y-10, word, fontsize=8, color='xkcd:rusty red')
 
 def test_text_recognition_with_bytes(image_url: str):
     """ Test Text Recognition service using an image as a byte array """
@@ -48,23 +54,14 @@ def test_text_recognition_with_bytes(image_url: str):
 
     # Draw a box for every region
     for region in result["regions"]:
-        region_box = generate_bounding_box_polygon(region["boundingBox"])
-        plt.gca().add_line(region_box)
-
+        region_box = render_bounding_box(region["boundingBox"], plot=plt)
         # Draw a box around every line in a region
         for line in region["lines"]:
-            line_box = generate_bounding_box_polygon(line["boundingBox"])
-            plt.gca().add_line(line_box)
-
+            line_box = render_bounding_box(line["boundingBox"], plot=plt)
             # Draw a box around every word in the line
             for word in line["words"]:
-                detected_text += word
-                word_box = generate_bounding_box_polygon(word["boundingBox"])
-                plt.gca().add_line(word_box)
-                box_coordinates = word["boundingBox"].strip().split(',')
-                x = int(box_coordinates[0].strip())
-                y = int(box_coordinates[1].strip())
-                plt.gca().text(x, y-10, word["text"], fontsize=8, color='xkcd:rusty red')
+                render_bounding_box(word["boundingBox"], plot=plt)
+                render_word(comma_delimited_rect=word["boundingBox"], word=word["text"], plot=plt)
 
     # Step 3 - Turn off the graph axes and show the graph!
     plt.axis("off")
@@ -93,22 +90,14 @@ def test_text_recognition_with_url(image_url: str):
     # Step 2 - Iterate over all the regions, lines and words to draw their bounding boxes
     # Draw a box for every region
     for region in result["regions"]:
-        region_box = generate_bounding_box_polygon(region["boundingBox"])
-        plt.gca().add_line(region_box)
-
+        render_bounding_box(region["boundingBox"], plot=plt)
         # Draw a box around every line in a region
         for line in region["lines"]:
-            line_box = generate_bounding_box_polygon(line["boundingBox"])
-            plt.gca().add_line(line_box)
-
+            render_bounding_box(line["boundingBox"], plot=plt)
             # Draw a box around every word in the line
             for word in line["words"]:
-                word_box = generate_bounding_box_polygon(word["boundingBox"])
-                plt.gca().add_line(word_box)
-                box_coordinates = word["boundingBox"].strip().split(',')
-                x = int(box_coordinates[0].strip())
-                y = int(box_coordinates[1].strip())
-                plt.gca().text(x, y-10, word["text"], fontsize=8, color='xkcd:rusty red')
+                render_bounding_box(word["boundingBox"], plot=plt)
+                render_word(comma_delimited_rect=word["boundingBox"], word=word["text"], plot=plt)
 
     # Step 3 - Turn off the graph axes and show the graph!
     plt.axis("off")
@@ -165,22 +154,14 @@ def test_text_recognition_with_local_file():
 
     print("drawing bounding boxes...")
     for region in result["regions"]:
-        region_box = generate_bounding_box_polygon(region["boundingBox"])
-        plt.gca().add_line(region_box)
-
+        region_box = render_bounding_box(region["boundingBox"], plot=plt)
         # Draw a box around every line in a region
         for line in region["lines"]:
-            line_box = generate_bounding_box_polygon(line["boundingBox"])
-            plt.gca().add_line(line_box)
-
+            line_box = render_bounding_box(line["boundingBox"], plot=plt)
             # Draw a box around every word in the line
             for word in line["words"]:
-                word_box = generate_bounding_box_polygon(word["boundingBox"])
-                plt.gca().add_line(word_box)
-                box_coordinates = word["boundingBox"].strip().split(',')
-                x = int(box_coordinates[0].strip())
-                y = int(box_coordinates[1].strip())
-                plt.gca().text(x, y-10, word["text"], fontsize=8, color='xkcd:rusty red')
+                render_bounding_box(word["boundingBox"], plot=plt)
+                render_word(comma_delimited_rect=word["boundingBox"], word=word["text"], plot=plt)
 
     # Step 3 - Turn off the graph axes and show the graph!
     plt.axis("off")
