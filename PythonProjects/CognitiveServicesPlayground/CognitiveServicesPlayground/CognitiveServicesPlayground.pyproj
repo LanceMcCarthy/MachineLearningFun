@@ -12,6 +12,7 @@
     <Name>CognitiveServicesPlayground</Name>
     <RootNamespace>CognitiveServicesPlayground</RootNamespace>
     <InterpreterId>Global|PythonCore|3.6</InterpreterId>
+    <IsWindowsApplication>False</IsWindowsApplication>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
     <DebugSymbols>true</DebugSymbols>
@@ -23,6 +24,9 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="cognitive_services_playground.py" />
+    <Compile Include="mvp_name_finder.py">
+      <SubType>Code</SubType>
+    </Compile>
     <Compile Include="service_constants.py">
       <SubType>Code</SubType>
     </Compile>

@@ -1,10 +1,10 @@
 """ Main Application File """
+import easygui
 import json
 from io import BytesIO
 import matplotlib.pyplot as plt
 import requests
 from PIL import Image
-import easygui
 import vision_service
 
 
@@ -154,10 +154,10 @@ def test_text_recognition_with_local_file():
 
     print("drawing bounding boxes...")
     for region in result["regions"]:
-        region_box = render_bounding_box(region["boundingBox"], plot=plt)
+        render_bounding_box(region["boundingBox"], plot=plt)
         # Draw a box around every line in a region
         for line in region["lines"]:
-            line_box = render_bounding_box(line["boundingBox"], plot=plt)
+            render_bounding_box(line["boundingBox"], plot=plt)
             # Draw a box around every word in the line
             for word in line["words"]:
                 render_bounding_box(word["boundingBox"], plot=plt)
