@@ -33,6 +33,7 @@ namespace FunWithFER.Effects.VideoEffects
         private IPropertySet currentConfiguration;
 
         // WinML Fields
+        private LearningModelDeviceKind detectedDeviceKind;
         private LearningModel model;
         private LearningModelBinding binding;
         private LearningModelSession session;
@@ -42,8 +43,8 @@ namespace FunWithFER.Effects.VideoEffects
 
         // General
         private int runCount = 0;
-        private bool modelBindingComplete;
-        private readonly TimeSpan poolTimerInterval = TimeSpan.FromSeconds(2);
+        private bool modelCreated;
+        private readonly TimeSpan poolTimerInterval = TimeSpan.FromSeconds(1);
         private ThreadPoolTimer frameProcessingTimer;
         private readonly SemaphoreSlim semaphore = new SemaphoreSlim(1);
         private VideoFrame videoFrameToProcess;
@@ -51,7 +52,7 @@ namespace FunWithFER.Effects.VideoEffects
         // ** Properties ** //
 
         /// <summary>
-        /// The path for the model file
+        /// The path to the ONYX model file, the default is TinyYolo2-1.2 shipped with the effect.
         /// </summary>
         public Uri ModelUri { get; set; } = new Uri("ms-appx:///Assets/tiny-yolov2-1.2.onnx");
         
@@ -120,20 +121,52 @@ namespace FunWithFER.Effects.VideoEffects
         // This method is executed by the ThreadPoolTimer, it performs the evaluation on a copy of the VideoFrame
         private async void EvaluateVideoFrame(ThreadPoolTimer timer)
         {
-            // If a lock is being held, or WinML isn't fully initialized, return
-            if (!semaphore.Wait(0) || !modelBindingComplete)
+            if (semaphore == null)
+            {
                 return;
+            }
+
+            if (!modelCreated)
+            {
+                Debug.WriteLine($"EvaluateVideoFrame Skipped - LearningModel Not Ready.");
+                return;
+            }
+
+            // If a lock is being held, or WinML isn't fully initialized, return
+            if (!semaphore.Wait(0))
+            {
+                Debug.WriteLine($"EvaluateVideoFrame Skipped - Waiting Semaphore Access");
+                return;
+            }
+
+            if (session == null)
+            {
+                try
+                {
+                    Debug.WriteLine($"Attempting to create LearningModelSession using DeviceKind: {detectedDeviceKind}");
+
+                    session = new LearningModelSession(model, new LearningModelDevice(detectedDeviceKind));
+
+                    Debug.WriteLine($"LearningModelSession successfully created.");
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"Error Creating Session: {ex.Message}");
+                    model = null;
+                    return;
+                }
+            }
+
+            Debug.WriteLine($"*************** Evaluating Video Frame [START] ***************");
 
             try
             {
                 using (videoFrameToProcess)
                 {
                     // ************ WinML Evaluate Frame ************ //
-
-                    Debug.WriteLine($"*************** Evaluating Video Frame [START] ***************");
-
-                    Debug.WriteLine($"RelativeTime in Seconds: {videoFrameToProcess.RelativeTime?.Seconds}");
-
+                    
+                    Debug.WriteLine($"VideoFrame RelativeTime: {videoFrameToProcess.RelativeTime?.Seconds}s");
+                    
                     // Create a binding object from the session
                     binding = new LearningModelBinding(session);
 
@@ -157,17 +190,17 @@ namespace FunWithFER.Effects.VideoEffects
                         return;
                     }
 
-                    Debug.WriteLine($" **** Outputs Available ***** ");
+                    Debug.WriteLine($" **** {results.Outputs.Count} Outputs Available ***** ");
 
                     foreach (var output in results.Outputs)
                     {
-                        Debug.WriteLine($" -- {output.Key}");
+                        Debug.WriteLine($" - {output.Key}");
                     }
 
                     // Retrieve the results of evaluation
                     var resultTensor = results.Outputs[outputName] as TensorFloat;
 
-                    Debug.WriteLine($"Result Tensor - {resultTensor.Kind.ToString()} ");
+                    Debug.WriteLine($"Result Feature Kind: {resultTensor?.Kind.ToString()} ");
 
                     var resultVector = resultTensor?.GetAsVectorView();
 
@@ -175,98 +208,109 @@ namespace FunWithFER.Effects.VideoEffects
                     filteredBoxes = parser.NonMaxSuppress(parser.ParseOutputs(resultVector?.ToArray()), 5, .5F);
                     
                     Debug.WriteLine(filteredBoxes.Count <= 0 ? $"No Valid Bounding Boxes" : $"Valid Bounding Boxes: {filteredBoxes.Count}");
-
                 }
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"EvaluateFrameException: {ex}");
+                Debug.WriteLine($"Error: EvaluateFrameException: {ex}");
             }
             finally
             {
-                semaphore.Release();
+                semaphore?.Release();
 
                 Debug.WriteLine($"*************** Evaluating Video Frame [END] ***************");
             }
         }
-
-
-        // Loads the ML model file and sets 
-        private async Task LoadModelAndCreateSessionAsync(LearningModelDeviceKind deviceKind)
+        
+        // Loads the ML model file and creates LearningModel
+        private async Task LoadModelAsync()
         {
-            if (model != null)
-                return;
-
-            Debug.WriteLine($"Loading Model");
-
             try
             {
-                // Load Model
+                Debug.WriteLine($"*************** LoadModelAsync [START] ***************");
+                Debug.WriteLine($" - Locating ONYX file");
+
                 var modelFile = await StorageFile.GetFileFromApplicationUriAsync(ModelUri);
-                Debug.WriteLine($"Model file located");
+
+                Debug.WriteLine($" - {modelFile.DisplayName} file located, attempting to create LearningModel");
+                Debug.WriteLine($" - Attempting to create LearningModel...");
 
                 model = await LearningModel.LoadFromStorageFileAsync(modelFile);
-                Debug.WriteLine($"LearningModel instantiated using model file: {modelFile.Path}");
 
-                session = new LearningModelSession(model, new LearningModelDevice(deviceKind));
-                Debug.WriteLine($"LearningModelSession created using model and DirectX DeviceKind");
+                Debug.WriteLine($" - {model.Name} LearningModel successfully instantiated.");
 
-                modelBindingComplete = true;
+                modelCreated = true;
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"Error loading model: {ex.Message}");
+                Debug.WriteLine($" - Error: Problem loading model file or creating LearningModel: {ex.Message}");
                 model = null;
-                modelBindingComplete = false;
+                modelCreated = false;
+            }
+            finally
+            {
+                Debug.WriteLine($"*************** LoadModelAsync [END] ***************");
             }
         }
         
+
         // ********** IBasicVideoEffect Requirements ********** //
 
-        public void SetProperties(IPropertySet configuration)
+        public async void SetProperties(IPropertySet configuration)
         {
             currentConfiguration = configuration;
+
+
+            // Create the Learning model at the first opportunity
+            await LoadModelAsync();
         }
 
-        public async void SetEncodingProperties(VideoEncodingProperties encodingProperties, IDirect3DDevice device)
+        public void SetEncodingProperties(VideoEncodingProperties encodingProperties, IDirect3DDevice device)
         {
             currentEncodingProperties = encodingProperties;
+
             canvasDevice = device != null ? CanvasDevice.CreateFromDirect3D11Device(device) : CanvasDevice.GetSharedDevice();
 
             parser = new TinyYoloParser();
             filteredBoxes = new List<BoundingBox>();
-            
-            // Use the appropriate option
-            if (device == null)
-            {
-                // startup WinML using CPU
-                await LoadModelAndCreateSessionAsync(LearningModelDeviceKind.Cpu);
-            }
-            else
-            {
-                // Startup WinML using DirectX
 
-                // IF the frame rate is really high, we can probably expect a higher powered device
-                var frames = encodingProperties.FrameRate.Numerator;
-                var timeSpan = encodingProperties.FrameRate.Denominator;
-                var ratio = timeSpan / frames;
-
-                if (ratio > 0.04)
+            if (model == null)
+            {
+                // Use the appropriate option
+                if (device == null)
                 {
-                    // Greater than 30 frames a second
-                    await LoadModelAndCreateSessionAsync(LearningModelDeviceKind.DirectXHighPerformance);
+                    // startup WinML using CPU
+                    detectedDeviceKind = LearningModelDeviceKind.Cpu;
                 }
                 else
                 {
-                    // If 30 frames a second or less, set expectations for WinML about what power is available
-                    await LoadModelAndCreateSessionAsync(LearningModelDeviceKind.DirectX);
+                    // Startup WinML using DirectX
 
-                    // TODO - Determine if low power is needed instead
-                    // await LoadModelAndCreateSessionAsync(LearningModelDeviceKind.DirectXMinPower);
+                    // IF the frame rate is really high, we can probably expect a higher powered device
+                    var frames = encodingProperties.FrameRate.Numerator;
+                    var timeSpan = encodingProperties.FrameRate.Denominator;
+                    var ratio = timeSpan / frames;
+
+                    if (ratio > 0.04)
+                    {
+                        // Greater than 30 frames a second
+                        detectedDeviceKind = LearningModelDeviceKind.DirectXHighPerformance;
+                    }
+                    else if (ratio > 0.01)
+                    {
+                        // If 30 frames a second or less, set expectations for WinML about what power is available
+                        detectedDeviceKind = LearningModelDeviceKind.DirectX;
+                    }
+                    else
+                    {
+                        detectedDeviceKind = LearningModelDeviceKind.DirectXMinPower;
+                    }
                 }
-            }
-            
-            frameProcessingTimer = ThreadPoolTimer.CreatePeriodicTimer(EvaluateVideoFrame, poolTimerInterval);
+
+                Debug.WriteLine($"Warning: LearningDeviceKind is set to {detectedDeviceKind}.");
+                
+                frameProcessingTimer = ThreadPoolTimer.CreatePeriodicTimer(EvaluateVideoFrame, poolTimerInterval);
+            }   
         }
 
         public void Close(MediaEffectClosedReason reason)
