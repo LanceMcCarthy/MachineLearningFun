@@ -5,7 +5,7 @@ using System.Linq;
 using System.Runtime.InteropServices.WindowsRuntime;
 using System.Threading;
 using System.Threading.Tasks;
-using Windows.AI.MachineLearning.Preview;
+using Windows.AI.MachineLearning;
 using Windows.Foundation;
 using Windows.Foundation.Collections;
 using Windows.Graphics.DirectX.Direct3D11;
@@ -33,22 +33,20 @@ namespace FunWithFER.Effects.VideoEffects
         private IPropertySet currentConfiguration;
 
         // WinML Fields
-        private LearningModelPreview model;
-        private LearningModelBindingPreview binding;
-        private InferencingOptionsPreview options;
-        private ImageVariableDescriptorPreview inputImageDescription;
-        private TensorVariableDescriptorPreview outputTensorDescription;
+        private LearningModel model;
+        private LearningModelBinding binding;
+        private LearningModelSession session;
+        
         private TinyYoloParser parser;
         private IList<BoundingBox> filteredBoxes;
-        private List<float> outputArray;
 
         // General
-        //private bool isLoadingModel;
+        private int runCount = 0;
         private bool modelBindingComplete;
         private readonly TimeSpan poolTimerInterval = TimeSpan.FromSeconds(2);
         private ThreadPoolTimer frameProcessingTimer;
         private readonly SemaphoreSlim semaphore = new SemaphoreSlim(1);
-        private VideoFrame evaluatableVideoFrame;
+        private VideoFrame videoFrameToProcess;
 
         // ** Properties ** //
 
@@ -56,23 +54,19 @@ namespace FunWithFER.Effects.VideoEffects
         /// The path for the model file
         /// </summary>
         public Uri ModelUri { get; set; } = new Uri("ms-appx:///Assets/tiny-yolov2-1.2.onnx");
-
-
+        
         // ** Methods ** //
 
-        // This is run for every video frame passed in the media pipleine (MediaPlayer, MediaCapture, etc)
+        // This is run for every video frame passed in the media pipeline (MediaPlayer, MediaCapture, etc)
         public void ProcessFrame(ProcessVideoFrameContext context)
         {
-            evaluatableVideoFrame = VideoFrame.CreateWithDirect3D11Surface(context.InputFrame.Direct3DSurface);
-
+            videoFrameToProcess = VideoFrame.CreateWithDirect3D11Surface(context.InputFrame.Direct3DSurface);
+            
             // ********** Draw Bounding Boxes with Win2D ********** //
 
             // Use Direct3DSurface if using GPU memory
             if (context.InputFrame.Direct3DSurface != null)
             {
-                if(modelBindingComplete && options.PreferredDeviceKind != LearningModelDeviceKindPreview.LearningDeviceGpu)
-                    options.PreferredDeviceKind = LearningModelDeviceKindPreview.LearningDeviceGpu;
-
                 using (var inputBitmap = CanvasBitmap.CreateFromDirect3D11Surface(canvasDevice, context.InputFrame.Direct3DSurface))
                 using (var renderTarget = CanvasRenderTarget.CreateFromDirect3D11Surface(canvasDevice, context.OutputFrame.Direct3DSurface))
                 using (var ds = renderTarget.CreateDrawingSession())
@@ -98,9 +92,6 @@ namespace FunWithFER.Effects.VideoEffects
             // Use SoftwareBitmap if using CPU memory
             if (context.InputFrame.SoftwareBitmap != null)
             {
-                if (modelBindingComplete && options.PreferredDeviceKind != LearningModelDeviceKindPreview.LearningDeviceCpu)
-                    options.PreferredDeviceKind = LearningModelDeviceKindPreview.LearningDeviceCpu;
-
                 // InputFrame's pixels
                 byte[] inputFrameBytes = new byte[4 * context.InputFrame.SoftwareBitmap.PixelWidth * context.InputFrame.SoftwareBitmap.PixelHeight];
                 context.InputFrame.SoftwareBitmap.CopyToBuffer(inputFrameBytes.AsBuffer());
@@ -135,17 +126,54 @@ namespace FunWithFER.Effects.VideoEffects
 
             try
             {
-                using (evaluatableVideoFrame)
+                using (videoFrameToProcess)
                 {
                     // ************ WinML Evaluate Frame ************ //
 
-                    Debug.WriteLine($"RelativeTime in Seconds: {evaluatableVideoFrame.RelativeTime?.Seconds}");
-                    
-                    await model.EvaluateAsync(binding, "TinyYOLO");
-                    
-                    // Remove overlapping and low confidence bounding boxes
-                    filteredBoxes = parser.NonMaxSuppress(parser.ParseOutputs(outputArray.ToArray()), 5, .5F);
+                    Debug.WriteLine($"*************** Evaluating Video Frame [START] ***************");
 
+                    Debug.WriteLine($"RelativeTime in Seconds: {videoFrameToProcess.RelativeTime?.Seconds}");
+
+                    // Create a binding object from the session
+                    binding = new LearningModelBinding(session);
+
+                    // Create an image tensor from a video frame
+                    var image = ImageFeatureValue.CreateFromVideoFrame(videoFrameToProcess);
+
+                    // The YOLO model's input name is "image" and output name is "grid"
+                    var inputName = "image";
+                    var outputName = "grid";
+
+                    // Bind the image to the input
+                    binding.Bind(inputName, image);
+
+                    // Process the frame with the model
+                    var results = await session.EvaluateAsync(binding, $"YoloRun {++runCount}");
+
+                    Debug.WriteLine($"Evaluation Result Success? {results.Succeeded} ");
+
+                    if (!results.Succeeded)
+                    {
+                        return;
+                    }
+
+                    Debug.WriteLine($" **** Outputs Available ***** ");
+
+                    foreach (var output in results.Outputs)
+                    {
+                        Debug.WriteLine($" -- {output.Key}");
+                    }
+
+                    // Retrieve the results of evaluation
+                    var resultTensor = results.Outputs[outputName] as TensorFloat;
+
+                    Debug.WriteLine($"Result Tensor - {resultTensor.Kind.ToString()} ");
+
+                    var resultVector = resultTensor?.GetAsVectorView();
+
+                    // Remove overlapping and low confidence bounding boxes
+                    filteredBoxes = parser.NonMaxSuppress(parser.ParseOutputs(resultVector?.ToArray()), 5, .5F);
+                    
                     Debug.WriteLine(filteredBoxes.Count <= 0 ? $"No Valid Bounding Boxes" : $"Valid Bounding Boxes: {filteredBoxes.Count}");
 
                 }
@@ -157,12 +185,14 @@ namespace FunWithFER.Effects.VideoEffects
             finally
             {
                 semaphore.Release();
+
+                Debug.WriteLine($"*************** Evaluating Video Frame [END] ***************");
             }
         }
 
 
         // Loads the ML model file and sets 
-        private async Task LoadModelAsync()
+        private async Task LoadModelAndCreateSessionAsync(LearningModelDeviceKind deviceKind)
         {
             if (model != null)
                 return;
@@ -173,45 +203,15 @@ namespace FunWithFER.Effects.VideoEffects
             {
                 // Load Model
                 var modelFile = await StorageFile.GetFileFromApplicationUriAsync(ModelUri);
-                Debug.WriteLine($"Model file discovered at: {modelFile.Path}");
+                Debug.WriteLine($"Model file located");
 
-                model = await LearningModelPreview.LoadModelFromStorageFileAsync(modelFile);
-                Debug.WriteLine($"LearningModelPReview object instantiated: {modelFile.Path}");
+                model = await LearningModel.LoadFromStorageFileAsync(modelFile);
+                Debug.WriteLine($"LearningModel instantiated using model file: {modelFile.Path}");
 
-                options = model.InferencingOptions;
-                options.PreferredDeviceKind = LearningModelDeviceKindPreview.LearningDeviceGpu;
-                model.InferencingOptions = options;
+                session = new LearningModelSession(model, new LearningModelDevice(deviceKind));
+                Debug.WriteLine($"LearningModelSession created using model and DirectX DeviceKind");
 
-                // Retrieve model input and output variable descriptions (we already know the model takes an image in and outputs a tensor)
-                var inputFeatures = model.Description.InputFeatures.ToList();
-                Debug.WriteLine($"{inputFeatures.Count} Input Features");
-
-                var outputFeatures = model.Description.OutputFeatures.ToList();
-                Debug.WriteLine($"{inputFeatures.Count} Output Features");
-
-                inputImageDescription = inputFeatures.FirstOrDefault(feature => feature.ModelFeatureKind == LearningModelFeatureKindPreview.Image)
-                    as ImageVariableDescriptorPreview;
-
-                outputTensorDescription = outputFeatures.FirstOrDefault(feature => feature.ModelFeatureKind == LearningModelFeatureKindPreview.Tensor)
-                    as TensorVariableDescriptorPreview;
-
-                binding = new LearningModelBindingPreview(model); // Create bindings for the input and output buffer
-
-                outputArray = new List<float>(); // R4 WinML does needs the output pre-allocated for multi-dimensional tensors
-                outputArray.AddRange(new float[21125]);  // Total size of TinyYOLO output
-
-                if (inputImageDescription != null && outputTensorDescription != null)
-                {
-                    binding.Bind(inputImageDescription.Name, evaluatableVideoFrame);
-                    binding.Bind(outputTensorDescription.Name, outputArray);
-
-                    modelBindingComplete = true;
-                }
-                else
-                {
-                    modelBindingComplete = false;
-                }
-
+                modelBindingComplete = true;
             }
             catch (Exception ex)
             {
@@ -220,8 +220,7 @@ namespace FunWithFER.Effects.VideoEffects
                 modelBindingComplete = false;
             }
         }
-
-
+        
         // ********** IBasicVideoEffect Requirements ********** //
 
         public void SetProperties(IPropertySet configuration)
@@ -237,8 +236,36 @@ namespace FunWithFER.Effects.VideoEffects
             parser = new TinyYoloParser();
             filteredBoxes = new List<BoundingBox>();
             
-            await LoadModelAsync();
+            // Use the appropriate option
+            if (device == null)
+            {
+                // startup WinML using CPU
+                await LoadModelAndCreateSessionAsync(LearningModelDeviceKind.Cpu);
+            }
+            else
+            {
+                // Startup WinML using DirectX
 
+                // IF the frame rate is really high, we can probably expect a higher powered device
+                var frames = encodingProperties.FrameRate.Numerator;
+                var timeSpan = encodingProperties.FrameRate.Denominator;
+                var ratio = timeSpan / frames;
+
+                if (ratio > 0.04)
+                {
+                    // Greater than 30 frames a second
+                    await LoadModelAndCreateSessionAsync(LearningModelDeviceKind.DirectXHighPerformance);
+                }
+                else
+                {
+                    // If 30 frames a second or less, set expectations for WinML about what power is available
+                    await LoadModelAndCreateSessionAsync(LearningModelDeviceKind.DirectX);
+
+                    // TODO - Determine if low power is needed instead
+                    // await LoadModelAndCreateSessionAsync(LearningModelDeviceKind.DirectXMinPower);
+                }
+            }
+            
             frameProcessingTimer = ThreadPoolTimer.CreatePeriodicTimer(EvaluateVideoFrame, poolTimerInterval);
         }
 

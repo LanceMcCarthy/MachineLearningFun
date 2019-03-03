@@ -51,7 +51,8 @@ namespace FunWithFER
             {
                 if (rootFrame.Content == null)
                 {
-                    rootFrame.Navigate(typeof(MainPage), e.Arguments);
+                    //rootFrame.Navigate(typeof(MainPage), e.Arguments);
+                    rootFrame.Navigate(typeof(VideoPage), e.Arguments);
                 }
 
                 Window.Current.Activate();
